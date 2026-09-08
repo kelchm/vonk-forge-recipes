@@ -72,10 +72,6 @@ class Handler(BaseHTTPRequestHandler):
                     "error": {
                         "message": "unexpected request",
                         "type": "invalid_request_error",
-                        "fields": sorted(
-                            key for key in set(EXPECTED_REQUEST) | set(payload)
-                            if payload.get(key) != EXPECTED_REQUEST.get(key)
-                        ) if isinstance(payload, dict) else ["body"],
                     }
                 },
             )
