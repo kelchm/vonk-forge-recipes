@@ -131,7 +131,12 @@ def test_canonical_canary_package_has_exact_source_and_model_closure() -> None:
         assert "@sha256:9bb659dc6d5218917236f3711e866a5634bb4c2f208de9d4533aa4863f57c1d3" in dockerfile
 
 
-def test_canonical_canary_server_behaves_without_gpu() -> None:
+@pytest.mark.parametrize("change,accepted", [
+    ({}, True), ({"stream": None}, True), ({"stream": True}, False),
+    ({"stream": 0}, False), ({"model": "wrong"}, False),
+    ({"max_tokens": 17}, False), ({"messages": []}, False),
+])
+def test_canonical_canary_server_behaves_without_gpu(change, accepted) -> None:
     with socket.socket() as listener:
         try:
             listener.bind(("127.0.0.1", 0))
@@ -157,14 +162,23 @@ def test_canonical_canary_server_behaves_without_gpu() -> None:
                 if time.monotonic() >= deadline:
                     raise
                 time.sleep(0.02)
+        body = json.loads((FIXTURE / "expected.json").read_text())["request"]
+        body.update(change)
+        if change.get("stream", "present") is None:
+            del body["stream"]
         request = urllib.request.Request(
             f"{base_url}/v1/chat/completions",
-            data=json.dumps(json.loads((FIXTURE / "expected.json").read_text())["request"]).encode(),
+            data=json.dumps(body).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=2) as response:
-            assert json.load(response) == json.loads((FIXTURE / "expected.json").read_text())["response"]
+        if accepted:
+            with urllib.request.urlopen(request, timeout=2) as response:
+                assert json.load(response) == json.loads((FIXTURE / "expected.json").read_text())["response"]
+        else:
+            with pytest.raises(urllib.error.HTTPError) as rejected:
+                urllib.request.urlopen(request, timeout=2)
+            assert rejected.value.code == 400
     finally:
         process.terminate()
         process.wait(timeout=5)

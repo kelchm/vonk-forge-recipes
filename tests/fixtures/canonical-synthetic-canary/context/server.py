@@ -62,13 +62,20 @@ class Handler(BaseHTTPRequestHandler):
             )
         except (ValueError, json.JSONDecodeError):
             payload = None
-        if payload != EXPECTED_REQUEST:
+        # OpenAI defaults stream to false; LiteLLM removes it on this path.
+        if isinstance(payload, dict) and payload.get("stream", False) is False:
+            payload = {**payload, "stream": False}
+        if payload != EXPECTED_REQUEST or payload.get("stream") is not False:
             self._write_json(
                 400,
                 {
                     "error": {
                         "message": "unexpected request",
                         "type": "invalid_request_error",
+                        "fields": sorted(
+                            key for key in set(EXPECTED_REQUEST) | set(payload)
+                            if payload.get(key) != EXPECTED_REQUEST.get(key)
+                        ) if isinstance(payload, dict) else ["body"],
                     }
                 },
             )
